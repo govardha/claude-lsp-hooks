@@ -1,0 +1,26 @@
+{
+  "python": {
+    "command": "pyrefly",
+    "args": ["lsp"],
+    "extensionToLanguage": {
+      ".py": "python",
+      ".pyi": "python"
+    },
+    "transport": "stdio",
+    "startupTimeout": 60000,
+    "shutdownTimeout": 15000,
+    "maxRestarts": 3
+  },
+  "bash": {
+    "command": "bash-language-server",
+    "args": ["start"],
+    "extensionToLanguage": {
+      ".sh": "bash",
+      ".bash": "bash"
+    },
+    "transport": "stdio",
+    "startupTimeout": 30000,
+    "shutdownTimeout": 10000,
+    "maxRestarts": 3
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/govardha/src/claude-lsp-hooks/hooks/lsp_first_guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/govardha/src/claude-lsp-hooks/hooks/lsp_first_guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/govardha/src/claude-lsp-hooks/hooks/lsp_first_read_guard.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "LSP",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/govardha/src/claude-lsp-hooks/hooks/lsp_usage_tracker.py"
+          }
+        ]
+      }
+    ]
+  }
+}

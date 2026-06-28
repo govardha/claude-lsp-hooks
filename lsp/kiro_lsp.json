@@ -1,0 +1,25 @@
+{
+  "languages": {
+    "python": {
+      "name": "pyrefly",
+      "command": "pyrefly",
+      "args": ["lsp"],
+      "file_extensions": ["py", "pyi"],
+      "project_patterns": ["pyproject.toml", "setup.py", "requirements.txt"],
+      "exclude_patterns": ["**/venv/**", "**/.venv/**", "**/__pycache__/**"],
+      "multi_workspace": false,
+      "request_timeout_secs": 60
+    },
+    "bash": {
+      "name": "bash-language-server",
+      "command": "bash-language-server",
+      "args": ["start"],
+      "file_extensions": ["sh", "bash"],
+      "file_patterns": [".bashrc", ".bash_profile", ".profile"],
+      "project_patterns": ["Makefile"],
+      "exclude_patterns": ["**/node_modules/**"],
+      "multi_workspace": false,
+      "request_timeout_secs": 30
+    }
+  }
+}

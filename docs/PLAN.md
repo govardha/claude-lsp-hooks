@@ -462,15 +462,16 @@ Language detection from payload (verify field names against dumped payload):
 
 `pyrefly", "lsp"]``python
 EXT_TO_LANG = {
-    'py': 'python', 'pyi': 'python',
-    'sh': 'bash',   'bash': 'bash',
+'py': 'python', 'pyi': 'python',
+'sh': 'bash', 'bash': 'bash',
 }
 
 def detect_language(payload: dict) -> str | None:
-    path = payload.get("tool_input", {}).get("path", "")
-    ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
-    return EXT_TO_LANG.get(ext)
-```
+path = payload.get("tool_input", {}).get("path", "")
+ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+return EXT_TO_LANG.get(ext)
+
+````
 
 Acceptance tests:
 
@@ -489,7 +490,7 @@ echo "Exit should be 0: $?"
 echo '{"tool_name":"Grep","tool_input":{"pattern":"DATABASE_URL","path":".env"}}' \
   | python3 hooks/lsp_first_guard.py
 echo "Exit should be 0: $?"
-```
+````
 
 ---
 
@@ -666,9 +667,85 @@ print('PASS: state file correct')
 "
 ```
 
+## I need to do this for both Claude Code and Kiro cli
+
+## 15. Install Script (install.sh)
+
+A single install script that targets either Claude Code or Kiro CLI (or both).
+Must read the existing `settings.json` for the chosen tool, merge in the hook
+registrations from `settings_fragment.json`, and write back without clobbering
+existing config.
+
+### Requirements
+
+- Accepts a `--target` flag: `claude`, `kiro`, or `both` (default: `both`)
+- Resolves the correct settings/config paths:
+  - Claude Code:
+    - Hooks: `~/.claude/settings.json`
+    - LSP config: Plugin install from `lsp/lsp.json`
+  - Kiro CLI:
+    - Hooks: `~/.kiro/settings.json`
+    - LSP config: `~/.kiro/settings/lsp.json` (Kiro-native schema from `lsp/kiro_lsp.json`)
+- Reads existing `settings.json` if present (may have user hooks, permissions, etc.)
+- Deep-merges the `hooks` key from `settings_fragment.json` into the existing config
+  - Appends hook entries to existing `PreToolUse` / `PostToolUse` arrays (no duplicates)
+  - Preserves all other top-level keys untouched
+- For Kiro: deep-merges `lsp/kiro_lsp.json` into `~/.kiro/settings/lsp.json`
+  - Merges into existing `languages` key (preserves Kiro defaults like pyright, gopls)
+  - Our entries override only `python` (pyrefly) and add `bash`
+- Replaces `YOUR_USER` placeholder in commands with the actual `$USER` / `$HOME` path
+- Creates a timestamped backup of the original settings.json before writing
+- Copies `CLAUDE.md` to the appropriate location (`~/.claude/CLAUDE.md` and/or `~/.kiro/CLAUDE.md`)
+- Creates the state directory at `~/.local/share/lsp-hooks/state/`
+- Validates that `pyrefly` and `bash-language-server` are on PATH (warn if missing)
+- Idempotent — safe to re-run without duplicating hook entries
+
+### Usage
+
+```bash
+# Install for both tools
+./install.sh
+
+# Install for Claude Code only
+./install.sh --target claude
+
+# Install for Kiro CLI only
+./install.sh --target kiro
+
+# Dry-run (show what would change, don't write)
+./install.sh --dry-run
+```
+
+### State Directory Consideration
+
+Hooks scripts need a state directory. Options:
+1. Shared: `~/.claude/state/` for both (simpler, single source of truth)
+2. Separate: each tool gets its own (`~/.claude/state/`, `~/.kiro/state/`)
+
+Decision: Use a **shared** state dir at `~/.local/share/lsp-hooks/state/` — neutral
+to both tools, avoids coupling to either tool's config directory. Update
+`state_file_path()` in all hook scripts accordingly.
+
+### Repo Structure Addition
+
+```
+~/claude-lsp-hooks/
+    install.sh                    ← Install/merge script (bash, executable)
+    ...
+```
+
+### Milestone Addition
+
+```
+[ ] install.sh written with --target and --dry-run support
+[ ] install.sh tested: merge into empty settings.json
+[ ] install.sh tested: merge into existing settings.json with other hooks
+[ ] install.sh tested: idempotent re-run produces no duplicates
+```
+
 ---
 
-## 15. Milestone Checklist
+## 16. Milestone Checklist (Updated)
 
 ```
 [ ] Repo created, structure committed
@@ -687,11 +764,127 @@ print('PASS: state file correct')
 [ ] End-to-end: ask Claude "where is X defined" → see LSP tool call, not Grep
 [ ] End-to-end: grep attempt on symbol → blocked, block message shown
 [ ] PostToolUse tracker fires and nav_count increments after LSP call
+[ ] install.sh written with --target and --dry-run support
+[ ] install.sh tested: merge into empty settings.json
+[ ] install.sh tested: merge into existing settings.json with other hooks
+[ ] install.sh tested: idempotent re-run produces no duplicates
 ```
 
 ---
 
-## 16. Reference Links
+## 17. Kiro CLI v3 — Native LSP Support
+
+Kiro CLI v3 has built-in LSP support via `.kiro/settings/lsp.json`. This is a
+**separate config format** from Claude Code's plugin-based `lsp/lsp.json`.
+
+### Key Differences from Claude Code
+
+| Aspect              | Claude Code                                | Kiro CLI v3                                    |
+| ------------------- | ------------------------------------------ | ---------------------------------------------- |
+| LSP config location | Plugin system (`lsp/lsp.json` in repo)     | `~/.kiro/settings/lsp.json` (user-level)       |
+| Schema              | `command`, `args`, `extensionToLanguage`    | `languages.{lang}.{name,command,args,...}`      |
+| Scope               | Per-project via plugin install             | User-global at `~/.kiro/settings/lsp.json`     |
+| Init                | `/plugin install ~/repo@local`             | `/code init` or manual config                  |
+| Built-in            | Tree-sitter + optional LSP                 | Tree-sitter (18 langs) + optional LSP          |
+| Hook system         | `~/.claude/settings.json` hooks key        | `~/.kiro/settings.json` hooks key              |
+
+### Kiro-Native LSP Config Schema
+
+```json
+{
+  "languages": {
+    "<language_key>": {
+      "name": "display-name",
+      "command": "lsp-binary",
+      "args": ["--stdio"],
+      "file_extensions": ["ext1", "ext2"],
+      "file_patterns": ["Filename", "glob.*"],
+      "project_patterns": ["marker.toml"],
+      "exclude_patterns": ["**/build/**"],
+      "multi_workspace": false,
+      "initialization_options": {},
+      "request_timeout_secs": 60
+    }
+  }
+}
+```
+
+**Fields:**
+- `name` — Display name for the language server
+- `command` — Binary to execute
+- `args` — CLI arguments (usually `["--stdio"]`)
+- `file_extensions` — Extensions this server handles (no dots)
+- `file_patterns` — Glob patterns for filenames without standard extensions
+- `project_patterns` — Files indicating a project root
+- `exclude_patterns` — Globs to skip
+- `multi_workspace` — Multi-workspace folder support (default: false)
+- `initialization_options` — LSP-specific init config
+- `request_timeout_secs` — Request timeout (default: 60)
+
+### Our Config (lsp/kiro_lsp.json)
+
+```json
+{
+  "languages": {
+    "python": {
+      "name": "pyrefly",
+      "command": "pyrefly",
+      "args": ["lsp"],
+      "file_extensions": ["py", "pyi"],
+      "project_patterns": ["pyproject.toml", "setup.py", "requirements.txt"],
+      "exclude_patterns": ["**/venv/**", "**/.venv/**", "**/__pycache__/**"],
+      "multi_workspace": false,
+      "request_timeout_secs": 60
+    },
+    "bash": {
+      "name": "bash-language-server",
+      "command": "bash-language-server",
+      "args": ["start"],
+      "file_extensions": ["sh", "bash"],
+      "file_patterns": [".bashrc", ".bash_profile", ".profile"],
+      "project_patterns": ["Makefile"],
+      "exclude_patterns": ["**/node_modules/**"],
+      "multi_workspace": false,
+      "request_timeout_secs": 30
+    }
+  }
+}
+```
+
+### install.sh Update for Kiro CLI
+
+The install script must handle Kiro differently:
+
+1. **LSP config** → Copy `lsp/kiro_lsp.json` to `~/.kiro/settings/lsp.json`
+   - Note: Kiro docs say per-workspace at `.kiro/settings/lsp.json` (project root)
+   - We target `~/.kiro/settings/lsp.json` as a user-global default
+   - For per-project use, user can also copy to `<project>/.kiro/settings/lsp.json`
+2. **Hooks** → Merge hooks into `~/.kiro/settings.json` (same pattern as Claude Code)
+3. **CLAUDE.md equivalent** → Copy nudge file to `~/.kiro/CLAUDE.md` or equivalent
+4. **State dir** → Shared at `~/.local/share/lsp-hooks/state/` (unchanged)
+
+### Kiro CLI Default LSP Servers
+
+Kiro ships default configs for: C/C++ (clangd), Go (gopls), Java (jdtls),
+Kotlin (kotlin-language-server), Python (pyright), Ruby (solargraph),
+Rust (rust-analyzer), TypeScript/JavaScript (typescript-language-server).
+
+Our config **overrides Python** from pyright to pyrefly and **adds Bash** which
+Kiro doesn't include by default. The install script must merge, not replace,
+so existing Kiro defaults are preserved.
+
+### Updated Milestone Additions
+
+```
+[ ] lsp/kiro_lsp.json written with Kiro-native schema
+[ ] install.sh --target kiro copies lsp/kiro_lsp.json to ~/.kiro/settings/lsp.json
+[ ] install.sh --target kiro merges hooks into ~/.kiro/settings.json
+[ ] Kiro LSP verified: /code init detects pyrefly + bash-language-server
+```
+
+---
+
+## 18. Reference Links
 
 - [Claude Code tools reference](https://code.claude.com/docs/en/tools-reference) — Confirms `LSP` as the exact built-in tool name
 - [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official) — Anthropic's official plugin marketplace (pyright-lsp is here; pyrefly is not)
